@@ -9,6 +9,7 @@ from lib.connections import PROXY
 RETROHUNT_URL = 'https://www.virustotal.com/api/v3/intelligence/retrohunt_jobs'
 VT_COMMENT_API = 'https://www.virustotal.com/api/v3/files/%s/comments?relationships=author'
 VT_REPORT_URL = 'https://www.virustotal.com/api/v3/files/%s'
+VT_RELATIONSHIP_URL = 'https://www.virustotal.com/api/v3/files/%s/submissions'
 VENDORS = ['Microsoft', 'Kaspersky', 'McAfee', 'CrowdStrike', 'TrendMicro',
            'ESET-NOD32', 'Symantec', 'F-Secure', 'Sophos', 'GData']
 
@@ -43,7 +44,7 @@ def getVTInfo(hash, debug=False):
     info = processVirustotalSampleInfo(response_dict["data"], debug)
     if "sha256" in info:
         info.update(searchVirustotalComments(info["sha256"], debug))
-
+        info.update(searchVirustotalSubmissionsInfos(info["sha256"], debug))
     info['hash'] = hash
 
     # Harmless - TODO: Legacy features
@@ -111,6 +112,7 @@ def convertSize(size_bytes):
     i = int(math.floor(math.log(size_bytes, 1024)))
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
+
     return "%s %s" % (s, size_name[i])
 
 def getEmptyInfo():
@@ -123,13 +125,13 @@ def getEmptyInfo():
         "filenames": "-",
         "filetype": "-",
         "rating": "unknown",
-        "positives": 0,
-        "imphash": "-",
-        "harmless": False,
-        "revoked": False,
+#        "positives": 0,
+#       "imphash": "-",
+        # "harmless": False,
+        # "revoked": False,
         "signed": False,
-        "expired": False,
-        "mssoft": False,
+        # "expired": False,
+        # "mssoft": False,
         "vendor_results": {},
         "signer": "-",
         "vt_queried": True,
@@ -267,6 +269,35 @@ def searchVirustotalComments(sha256, debug=False):
             info['commenter'] = []
             for com in r_comments['data']:
                 info['commenter'].append(com['relationships']['author']['data']['id'])
+    except Exception:
+        if debug:
+            traceback.print_exc()
+    return info
+
+def searchVirustotalSubmissionsInfos(sha256, debug=False):
+    info = {
+        "telem_city": "",
+        "telem_country": "",
+        "telem_interface": "",
+        "telem_name":"",
+        "telem_source_key":""
+    }
+    try:
+        headers = { 'x-apikey': VT_PUBLIC_API_KEY}
+        # Comments
+        r_code_telemetry = requests.get(VT_RELATIONSHIP_URL % sha256, headers=headers, proxies=PROXY)
+        if not r_code_telemetry.ok:
+            if debug:
+                print("[D] Could not query submissions telemetry for sample %s" % sha256)
+            return info
+        r_submissions = json.loads(r_code_telemetry.content.decode("utf-8"))
+        #print(json.dumps(r_submissions, indent=4, sort_keys=True))
+        print(r_submissions)
+        info['telem_city'] = r_submissions['data'][0]['attributes']['city']
+        info['telem_country'] = r_submissions['data'][0]['attributes']['country']
+        info['telem_interface'] = r_submissions['data'][0]['attributes']['interface']
+        info['telem_name'] = r_submissions['data'][0]['attributes']['name']
+        info['telem_source_key'] = r_submissions['data'][0]['attributes']['source_key']
     except Exception:
         if debug:
             traceback.print_exc()
